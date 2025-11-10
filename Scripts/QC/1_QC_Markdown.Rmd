@@ -1,0 +1,504 @@
+---
+title: "LB_MRC_CombinedQC"
+author: "Joshua Harvey"
+date: "21 December 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Introduction
+This is an R Markdown document for the Quality Control (QC) of Illumina EPIC microarray data of the LB MRC sample generated from November - December 2021
+
+An overall record of each QC step is given at each step and summarized at the end of the markdown.
+
+###Study Information
+**Study:** LB MRC
+
+**Description:** Lewy Body MRC Project
+
+**Arrays ran by:** Jenny Imm 
+
+**Array used:** Illumina EPIC microarray v1.0
+
+**QC done by:** Joshua Harvey / Jenny Imm
+
+**Date of QC:** `r format(Sys.Date(), format="%d %B %Y")`
+
+**Sample tissue:** Brain - prefrontal cortex (PFC) and anterior cingulate cortex (CNG)
+
+##Data loading and structure
+
+mSet Object were generated seperately using the mSet generation script to merge previously generated mSet objects:  "/mnt/data1/LewyBodyMRC/Methylation/Scripts/MsetMaker.R".
+After loading in the raw pheno and mSet files, the below code will return a TRUE / FALSE statement whether the sample names match.
+
+```{r loadingdata, include=FALSE}
+
+library(minfi)
+library(wateRmelon)
+library(dplyr)
+library(stringr)
+library(corrplot)
+library(cowplot)
+library(rgl)
+library(FlowSorted.DLPFC.450k)
+library(gdsfmt)
+
+setwd("/mnt/data1/LewyBodyMRC/Methylation/")
+
+# Load in mSet Object
+load("/mnt/data1/LewyBodyMRC/Methylation/QC/mSetFull.rdata")
+
+# Load in pheno file
+pheno <- read.csv("/mnt/data1/LewyBodyMRC/Pheno/methPheno.csv", header = T, stringsAsFactors = F)
+pheno <- pheno[match(pheno$Basename, colnames(fullMset)),]
+isTRUE(unique(pheno$Basename == colnames(fullMset)))
+
+```
+
+
+##Median Intensity Check
+The intensity check is the biggest indicator of sample quality. The median methylated signal intensity and unmethylated signal intensity for each sample is calculcated.
+
+
+```{r medianIntensity, include=FALSE}
+m_intensities <- methylated(fullMset) ## this gives a matrix where each row is a probe and each column a sample
+u_intensities <- unmethylated(fullMset)
+
+## summarise the intensities of each sample with a single value, the median 
+M.median <- apply(m_intensities, 2, median)
+U.median <- apply(u_intensities, 2, median)
+M.U.ratio <- M.median / U.median
+
+pheno <- cbind(pheno, M.median, U.median, M.U.ratio)
+```
+
+Histogram, scatter and boxplots generated to visualise Plate and Chip effects on intensity.
+Based on overall intensity distributions, a soft threshold of 1500 M-intensity and 1000 U-intensity was set (visualised as a red line on relevant plots)
+
+```{r intensityPlots, echo=FALSE}
+# Plot histograms of median intensity
+hist(M.median, xlab = "Median M intensity")
+abline(v = 1500, col = "red")
+hist(U.median, xlab = "Median U intensity")
+abline(v = 1000, col = "red")
+# Scatter and boxplots of intensity by plate and Chip
+ggplot(data = pheno, aes(x = M.median, y = U.median, color = as.factor(plateNumber)))+
+  geom_point()+
+  theme_cowplot()+
+  ggtitle("Median intensity by Plate")+
+  labs(color = "Plate")+
+  geom_hline(aes(yintercept =1000), color = "red",linetype='dotted')+
+  geom_vline(aes(xintercept =1500), color = "red",linetype='dotted')
+ggplot(data = pheno[-which(pheno$SampleID == "Meth_Control"),], aes(x = as.factor(plateNumber), y = U.median))+
+  geom_boxplot()+
+  geom_jitter(width = 0.2)+
+  theme_cowplot()+
+  ggtitle("Median unMethylated intensity by Plate")
+ggplot(data = pheno[-which(pheno$SampleID == "Meth_Control"),], aes(x = M.median, y = U.median, color = as.factor(chipNumber)))+
+  geom_point()+
+  theme_cowplot()+
+  ggtitle("Median unMethylated intensity by Chip")+
+  labs(color = "Chip")+
+  facet_wrap(~plateNumber)
+ggplot(data = pheno[-which(pheno$SampleID == "Meth_Control"),], aes(x = as.factor(chipNumber), y = U.median))+
+  geom_boxplot()+
+  geom_jitter(width = 0.2)+
+  theme_cowplot()+
+  ggtitle("Median unMethylated intensity by Chip")+
+  facet_wrap(~plateNumber)+
+  ylab("Median U")+
+  xlab("Chip Number")
+ggplot(data = pheno[-which(pheno$SampleID == "Meth_Control"),], aes(x = as.factor(chipNumber), y = M.median))+
+  geom_boxplot()+
+  geom_jitter(width = 0.2)+
+  theme_cowplot()+
+  ggtitle("Median Methylated intensity by Chip")+
+  facet_wrap(~plateNumber)+
+  xlab("Chip Number")+
+  ylab("Median M")
+ggplot(data = pheno[-which(pheno$SampleID == "Meth_Control"),], aes(x = as.factor(chipNumber), y = M.U.ratio))+
+  geom_boxplot()+
+  geom_jitter(width = 0.2)+
+  theme_cowplot()+
+  ggtitle("Median Methylated/UnMethylated Ratio by Chip")+
+  facet_wrap(~plateNumber)+
+  xlab("Chip Number")+
+  ylab("Median M / U Ratio")
+```
+
+Based on the soft threshold only two samples fail on intensity
+
+```{r failedIntensity, echo=FALSE}
+intCheck <- pheno[-which(pheno$SampleID == "Meth_Control"),]
+intCheck[which(intCheck$M.median < 1500 | intCheck$U.median < 1000),c("SampleID","Basename","U.median","M.median")]
+
+```
+
+Looking at plate effects: generally plates are comparable, Plates 1 & 2 have slightly elevated intensities. Most samples cluster togehter, except for the two above failed samples and the fully methylated control samples.
+
+The Fully methylated control (203991410002_R01C01) on plate 4 shows low median methylated intensity, although its ratio is still high. The Fully methylated control (203991410002_R01C01) on plate 1 has a slightly low ratio, maybe  resulting from background.
+
+##Bisulphite Conversion Check
+A bisulphite conversion statistic for each sample was calculated, and a histogram of the results plotted. Samples showing conversion <80% will be removed at a later point.
+
+```{r bsCheck, echo=FALSE}
+bs<-bscon(fullMset)
+hist(bs, xlab = "Median % BS conversion", breaks = seq(0,100, by = 2))
+abline(v = 80, col = "red")
+
+
+pheno <- cbind(pheno, bs)
+pheno[which(pheno$bs < 80),c("SampleID","Basename","bs")]
+```
+
+BS conversion rates are high, with the majority > 90. Only 2 samples show bs-conversion % under 80. 
+
+##Outlier Check
+As outliers appeared to confound principle component (PC) based QC (e.g. Sex Check) in later steps, at this point the outlyx() function from wateRmelon was used to remove outlying samples. Fully methylated control samples where also removed at this point.
+
+```{r outlyxCheck, echo=FALSE}
+pheno <- pheno[-which(pheno$SampleID == "Meth_Control"),]
+fullMset <- fullMset[,which(colnames(fullMset) %in% pheno$Basename)]
+outliers <- outlyx(fullMset,iqr=TRUE, iqrP=2, pc=1,
+                   mv=TRUE, mvP=0.15, plot=TRUE)
+                   
+pheno$outliers <- outliers$outliers  
+pheno[which(pheno$outliers == TRUE),c("Basename","SampleID","M.median","U.median","bs")]
+```
+
+Outliers flags up 6 samples, 3 of which already failed either due to intensity or bs-conversion. 
+
+##Sex Check
+A principal component analysis of the methylation data can be used to predict the sex of the samples.
+
+The principal components are calculated, and the two which correlate most with sex are found. These can be used to generate a scatter plot where the sexes are clearly separated.
+```{r sexCheck, echo=FALSE}
+# Source QC gender clustering functions
+source("/mnt/data1/ExeterEWASPipeline/R/findGenderPC.r")
+source("/mnt/data1/ExeterEWASPipeline/R/clusterGender.r")
+
+#Make Gender a binary sex variable
+pheno[which(pheno$Gender == ""),"Gender"] <- NA
+pheno$Sex <- as.numeric(as.factor(pheno$Gender))
+
+
+#Save beta matrix
+betas <- betas(fullMset)
+betas <- betas[,which(colnames(betas) %in% pheno$Basename)]
+
+predSex1 <-findGenderPC(betas, pheno$Sex)
+predSex2 <-clusterGender(betas, pheno$Sex,thres = 0.8)
+pheno$predSex1 <- predSex1
+
+table(pheno$Sex,predSex1)
+
+```
+
+Although significant outlier confounding is evident on PC1: The seperation by PC3 appears to accurately capture reported Sex. A sum total of 12 samples show discordant predicted and reported Sex. Looking at these samples:
+```{r failedSexCheck, echo=FALSE}
+# Source QC gender clustering functions
+sexFail <- pheno[which(pheno$Sex != predSex1),]
+sexFail[order(sexFail$ID),c("SampleID","Basename","Sex","predSex1","M.median","bs","outliers")]
+```
+
+10 appear to be consistently mismatched across regional replicates, indicating an issue with the records for reported Sex. These discordant cases will be retained for normalisation. Validation of the brain bank records is recommended to confirm record accuracy. 
+
+##Relatedness Check
+Using the 59 genotyping probes on the EPIC array, inter-sample genetic correlation was calculated. Samples with a genetic correlation > 0.8 were annotated as related. Samples were annotates based on if they showed 1. Crytic relatedness to another case OR 2. Cryptic unrelatedness to it's second profiled brain region.
+
+```{r crypticCor, include=FALSE}
+
+# Extract SNP probes
+betas.rs<-betas[grep("rs", rownames(betas)),]
+
+
+#Correlate probes 
+snpCor<-cor(betas.rs, use="pairwise.complete.obs")
+
+# Annotate number of expected relations
+pheno$n <- NULL
+counts <- pheno %>% group_by(ID) %>% tally()
+pheno <- left_join(pheno, counts,by = "ID")
+
+
+##Build an expected actual relationship matrix, annotating actually related samples as 1 and unrelated as 0
+actual_relations <- data.frame()
+for(i in 1:nrow(pheno)){
+  x <- as.integer(pheno$ID[i] == pheno$ID)
+  actual_relations <- rbind(actual_relations,x)
+}
+actual_relations <- as.matrix(actual_relations)
+colnames(actual_relations) <- pheno$Basename
+rownames(actual_relations) <- pheno$Basename
+
+# Plot actual relationship matrix
+# ActMatrix <- corrplot(actual_relations, method = "color", title = "Actual Relationship Matrix",tl.pos = "n")
+
+# Build an observed inferred relationship matrix from the SNP correlations, coded as a boolean 0 for < 0.95 and 1 for > 0.95
+
+inferred_relations <- snpCor
+inferred_relations[] <- 0
+inferred_relations[which(snpCor > 0.8)] <- 1
+
+#By subtracting the inferred from the actual relationship matrix we can make a similarity matrix where 
+#  0 = correct annotation of relationship
+#  1 = pheno Related samples / SNP unrelated (cryptUnrelated)
+# -1 = pheno unrelated samples / SNP related (cryptRelated)
+sim_matrix <- actual_relations - inferred_relations
+
+# Plot discordant samples
+# SimMatrix <- corrplot(sim_matrix,method = "color", title = "Difference Relationship Matrix",tl.pos = "n")
+
+# The below for loop takes the similarity matrix and annotates the number of cryptic related and cryptic unrelated samples per individual sample
+# If samples show cryptic relatedness it also annotates the inferred related samples
+n_cryptRel <- c()
+n_cryptUnrel <- c()
+for(x in 1:nrow(sim_matrix)){
+  n_cryptRel <- append(n_cryptRel,length(which(sim_matrix[x,] < 0)))
+  n_cryptUnrel <- append(n_cryptUnrel,length(which(sim_matrix[x,] > 0)))
+  if(any(sim_matrix[x,] < 0)){
+    pheno[x,"cryptID"] <- unique(pheno[which(sim_matrix[x,] < 0),"ID"])
+  }
+}
+
+pheno <- cbind(pheno, n_cryptRel,n_cryptUnrel)
+```
+
+17 Samples showed either cryptic relatedness OR unrelatedness:
+```{r crypticFail, echo=FALSE}
+cryptFail <- pheno[which(pheno$n_cryptRel > 0 | pheno$n_cryptUnrel > 0),]
+cryptFail[order(cryptFail$ID),c("ID","Basename","M.median","bs","cryptID","n_cryptRel","n_cryptUnrel")]
+```
+Not all of these samples will be excluded, as it may be due to a spurious regional pair,or an issue of cryptic unrelatedness with a failed-sample. Samples were manually assessed in the table "QC/SummaryTables/CrypticRelatedness.csv" and the following 7 samples were flagged up as fails.
+
+```{r crypticRemoval, echo=FALSE}
+CrypticBasenames <- c("203991410064_R07C01",
+"203991410033_R04C01",
+"203968030080_R03C01",
+"203991410125_R08C01",
+"203991460068_R03C01",
+"203991410139_R04C01",
+"203991410064_R08C01")
+
+pheno$crypticQC <- FALSE
+pheno[which(pheno$Basename %in% CrypticBasenames),"crypticQC"] <- TRUE
+pheno[which(pheno$crypticQC == TRUE),c("SampleID","Basename")]
+```
+
+##Principal Component Check
+A principle component analysis of the raw mSet beta matrix was conducted, removing outlying samples identified earlier. This was done to visually assess the distribution of PC1 following outlier removal and to check for seperation of the two profiled brain regions. If high seperation is observed, brain regions will be normalised seperately.
+
+```{r pcaRaw, echo = FALSE}
+
+phenoB <- pheno[-which(pheno$outliers == TRUE),]
+
+mSetB <- fullMset[,which(colnames(fullMset) %in% phenoB$Basename)]
+betas <- betas(mSetB)
+
+betas.com<-betas[complete.cases(betas),]
+pca<-prcomp(betas.com)
+# save(pca,file = "/mnt/data1/LewyBodyMRC/Methylation/QC/RawPCs.rdata")
+```
+
+
+```{r pcaRawplots, echo = FALSE}
+factorPheno <- cbind(phenoB, pca$rotation[,c(1:10)])
+factorPheno$Brain_Region <- as.factor(factorPheno$Brain_Region)
+factorPheno$Brain_RegionN <- as.numeric(factorPheno$Brain_Region)
+
+ggplot(factorPheno, aes(x = PC1, y = PC3, color = as.factor(Sex)))+
+  geom_point()+
+  theme_cowplot()+
+  labs(color = "Sex")
+
+ggplot(factorPheno, aes(x = PC7, y = PC2, color = as.factor(Brain_Region)))+
+  geom_point()+
+  theme_cowplot()+
+  xlab(paste("PC7","( cor =", signif(cor(factorPheno$PC7,factorPheno$Brain_RegionN),3),")"))+
+  ylab(paste("PC2","( cor =", signif(cor(factorPheno$PC2,factorPheno$Brain_RegionN),3),")"))+
+  labs(color = "Brain Region")
+```
+
+Outlier effect is lost with the exclusion of outlier-data points.Overall, the best two correlating PC's with brain region only show modest correlations. Visual assessment only shows minor separation. Brain regions could viably be combined. Normalisation will be carried out seperately and normalisation violence checked post-hoc for any major effects.
+
+##P-filter
+The pfilter function in the wateRmelon package filters data sets based on beadcounts and detection p-values.
+If the percentage of samples with a beadcount less than 3 is greater than 5% for any probe, the probe is removed.
+If the percentage of probes with a detection p-value less than 0.05 is greater than 1% for any sample, the sample is removed.
+
+Similarly, if the percentage of samples with a detection p-value less than 0.05 is greater than 1% for any probe, the probe is removed.
+
+```{r pFilter, echo = FALSE}
+mSet.pf <- pfilter(fullMset)
+PF_Fail <- pheno[-which(pheno$Basename %in% colnames(mSet.pf)),"Basename"]
+pheno$P.filter <- pheno$Basename %in% PF_Fail
+
+
+pheno[which(pheno$Basename %in% PF_Fail),c("SampleID","Basename")]
+
+mSet <- fullMset[rownames(betas(fullMset)) %in% rownames(betas(mSet.pf)),]
+```
+
+##Normalisation
+The methylation data for just the passed samples and probes is quantile normalised using the dasen function from the wateRmelon package.
+
+```{r norm, echo = FALSE}
+FailedSamples <- pheno[which(pheno$M.median < 1500 | pheno$U.median < 1000 | 
+                         pheno$bs < 80 | pheno$outliers == TRUE | pheno$crypticQC == TRUE | pheno$P.filter == TRUE),"Basename"]
+
+#Subset passed samples
+PassPheno <- pheno[-which(pheno$Basename %in% FailedSamples),]
+
+mSet <- mSet[, which(colnames(mSet) %in% PassPheno$Basename)]
+mSet <- dasen(mSet)
+
+
+plotmset_density<-function(mset, study=""){
+  onetwo<-fData(mset)$DESIGN
+  mat<-betas(mset)
+  
+  plot(density(mat[onetwo=="I",1], na.rm=T, bw=0.03), cex.main=0.8, main=paste(study, "Betas"), ylim=c(0, 5.2), xlab="")
+  lines(density(mat[onetwo=="II",1], na.rm=T, bw=0.03), col="red")
+  
+  for(j in 2:ncol(mat)){
+    lines(density(mat[onetwo=="I",j], na.rm=T, bw=0.03))
+    lines(density(mat[onetwo=="II",j], na.rm=T, bw=0.03), col="red")
+  }
+  
+  legend("topright", legend=c("Type I", "Type II"), lty=1, col=c("black", "red")) 
+}
+
+plotmset_density(fullMset[rownames(betas(fullMset)) %in% rownames(betas(mSet)),colnames(betas(fullMset)) %in% colnames(betas(mSet))], study="Full Raw data")
+plotmset_density(mSet, study="Full Normalised Data")
+```
+
+Normalisation looks as expected, with lower variance bimodal distribution observed post dasen-quantile normalisation. 
+
+```{r normVio, echo = FALSE}
+Tvio <- qual(betas(fullMset[rownames(betas(fullMset)) %in% rownames(betas(mSet)),colnames(betas(fullMset)) %in% colnames(betas(mSet))]),betas(mSet))
+PassPheno$rmsd <- Tvio$rmsd
+
+hist(PassPheno$rmsd,xlab = "Normalisation Violence (rmsd)")
+
+```
+
+No clear outlier samples where observable based on normalisation violence (fully explored in "QC/Scripts/QC_Preprocess.R")
+
+##Cell Deconvolution
+
+The wateRmelon package function estimateCellCounts() function in wateRmelon. The most up to date version was used ("https://github.com/schalkwyk/wateRmelon") as it also gives an output if CETYGO cell type deconvolution error prediction ("https://github.com/ds420/CETYGO/") RMSE(observed bulk profile, expected bulk profile), where the expected bulk profile is calculated by multiplying the predicted cell type proportions by the purified DNA methylation profiles. A soft threshold for good quality deconvolution of 0.1 can be applied. The FlowSorted.DLPFC.450k dataset ("https://bioconductor.org/packages/release/data/experiment/html/FlowSorted.DLPFC.450k.html") was used for reference 
+
+```{r cellDecon, echo = FALSE}
+source("/mnt/data1/LewyBodyMRC/Methylation/Scripts/ReferenceFunctions/.normalizeQuantiles2.R")
+source("/mnt/data1/LewyBodyMRC/Methylation/Scripts/ReferenceFunctions/estimateCellCounts.wlmn.R")
+
+wlmn_est <- estimateCellCounts.wmln(fullMset[rownames(betas(fullMset)) %in% rownames(betas(mSet)),colnames(betas(fullMset)) %in% colnames(betas(mSet))],
+                                    compositeCellType = "DLPFC",platform = "EPIC",
+                                    probeSelect = "auto",
+                                    cellTypes = c("NeuN_neg","NeuN_pos"),
+                                    referencePlatform = "IlluminaHumanMethylation450k")
+
+wlmn_est <- as.data.frame(wlmn_est)
+
+ggplot(wlmn_est, aes(x = CellTypePredictionError))+
+  geom_histogram(color = "white")+
+  theme_cowplot()+
+  ggtitle("Cell Type Prediction Error: Watermelon, 2 cell, normalised")
+
+
+```
+
+CETYGO indicated accurate cell type deconvolution, acheived by predicting two cell population proportions (NeuN + / -) using CETS reference data. With the majority of sample below 0.1 using wateRmelon predicitons. Proportions for this two cell type prediction are saved in the pheno file for future use as covariates. 
+
+##Age Prediction
+As a final test of overall quality, age estimaion was conducted using the Cortical Clock (Shireby et al. https://academic.oup.com/brain/article/143/12/3763/5942151)
+
+```{r agePred, echo = FALSE}
+betas <- betas(mSet)
+
+source("/mnt/data1/reference_files/CorticalClock/CorticalClock.r")
+braincoef <- read.table("/mnt/data1/reference_files/CorticalClock/CorticalClockCoefs.txt", header = T, stringsAsFactors = F)
+
+overlap<-braincoef[which(braincoef$probe %in% rownames(betas)),]
+nrow(overlap) < nrow(braincoef)
+
+## impute function 
+imputeNA<-function(betas){
+  betas[is.na(betas)]<-mean(betas,na.rm=T)
+  return(betas)
+}
+
+## apply function 
+betasNona<-apply(betas,2,function(x) imputeNA(x))  
+
+
+## tranform betas - CpG in row
+
+
+betas <-betas[braincoef$probe,]
+braincoef<-braincoef[match(rownames(betas), braincoef$probe),]
+brainpred<-braincoef$coef%*%betas+0.577682570446177
+
+
+anti.trafo<-function(x,adult.age=20) { ifelse(x<0, (1+adult.age)*exp(x)-1, (1+adult.age)*x+adult.age) }
+brainpred<-anti.trafo(brainpred)
+
+
+pheno<-pheno[match(colnames(betas), pheno$Basename),]
+pheno$brainpred<-as.numeric(brainpred)
+
+ggplot(pheno, aes(x = Age, y = brainpred))+
+  geom_point()+
+  geom_abline(intercept = 0,slope = 1, linetype = "dashed")+
+  theme_cowplot()+
+  xlab("Chronological age (years)")+
+  ylab("Predicted age (years) - Shireby2020")
+
+
+```
+
+There was a strong `r cor(pheno$brainpred,pheno$Age,use = "complete")` correlation between actual and predicted age.
+
+##Final Summary
+```{r qcSummary, echo = FALSE}
+pheno <- read.csv("/mnt/data1/LewyBodyMRC/Methylation/QC/SummaryTables/FullQCMetrics.csv", header = T, stringsAsFactors = F)
+FailedSamples <- pheno[which(pheno$M.median < 1500 | pheno$U.median < 1000 | 
+                         pheno$bs < 80 | pheno$outliers == TRUE | pheno$crypticQC == TRUE | pheno$P.filter == TRUE),"Basename"]
+pheno$intensityQC <- pheno$M.median < 1500 | pheno$U.median < 1000
+pheno$bsQC <- pheno$bs < 80 
+
+SummaryDF <- data.frame(table(pheno$intensityQC),
+           table(pheno$bsQC),
+           table(pheno$crypticQC),
+           table(pheno$P.filter),
+           table(pheno$outliers))
+SummaryDF <- SummaryDF[,-grep("Var1.",colnames(SummaryDF))]
+colnames(SummaryDF) <- c("n_Failed?","IntensityQC","bsQC","CrypticRel","pFilter","outlier")
+SummaryDF
+pheno <- pheno[-which(pheno$M.median < 1500 | pheno$U.median < 1000 | 
+                         pheno$bs < 80 | pheno$outliers == TRUE | pheno$crypticQC == TRUE | pheno$P.filter == TRUE),]
+```
+
+In summary a total of `r length(FailedSamples)` failed technical QC steps summarsed above. Additionally, a set of `r length(pheno[which(pheno$Sex != pheno$predSex1),"Basename"])` remaining samples show mismatched Sex. If these can not be rectified from brain bank records they will also be removed from the analysis.
+
+Finally: SNP probes, probes containing common SNPs, and probes with non-specific binding are removed at this stage to prevent technical artifacts influencing the results in later analyses.
+
+The QCed, normalised and filtered dataset is saved to LB_MRC_Norm_Filtered.rdat ready for subsequent analysis.
+
+```{r filtering, echo = FALSE}
+#betas<-betas(mSet)
+
+# crosshyb<-read.table("/mnt/data1/EPIC_reference/CrossHydridisingProbes_McCartney.txt", stringsAsFactors = FALSE)
+# snpProbes<-read.table("/mnt/data1/EPIC_reference/SNPProbes_McCartney.txt", stringsAsFactors = FALSE, header = TRUE)
+# snpProbes<-snpProbes[which(snpProbes$EUR_AF >= 0.05 & snpProbes$EUR_AF <= 0.95),]
+# 
+# betas<-betas[!(rownames(betas) %in% crosshyb[,1]), ]
+# betas<-betas[!(rownames(betas) %in% unique(snpProbes$IlmnID)), ]
+# betas<-betas[-grep("rs", rownames(betas)),]
+
+#save(pheno, betas, wlmn_est, file = "/mnt/data1/LewyBodyMRC/Methylation/QC/FinalData/Final_Filtered/LB_MRC_Norm_Filtered.rdat")
+```
+
