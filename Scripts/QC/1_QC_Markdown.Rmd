@@ -499,6 +499,6 @@ The QCed, normalised and filtered dataset is saved to LB_MRC_Norm_Filtered.rdat 
 # betas<-betas[!(rownames(betas) %in% unique(snpProbes$IlmnID)), ]
 # betas<-betas[-grep("rs", rownames(betas)),]
 
-#save(pheno, betas, wlmn_est, file = "/mnt/data1/LewyBodyMRC/Methylation/QC/FinalData/Final_Filtered/LB_MRC_Norm_Filtered.rdat")
+#save(pheno, betas, wlmn_est, file = "/mnt/data1/LewyBodyMRC/Methylation/QC/FinalData/Final_Filtered/LB_MRC_Norm_Filtered.rdat") 
 ```
 
