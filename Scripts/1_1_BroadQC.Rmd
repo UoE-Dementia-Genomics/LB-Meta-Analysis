@@ -478,8 +478,39 @@ SummaryDF <- data.frame(table(pheno$intensityQC),
 SummaryDF <- SummaryDF[,-grep("Var1.",colnames(SummaryDF))]
 colnames(SummaryDF) <- c("n_Failed?","IntensityQC","bsQC","CrypticRel","pFilter","outlier")
 SummaryDF
-pheno <- pheno[-which(pheno$M.median < 1500 | pheno$U.median < 1000 | 
-                         pheno$bs < 80 | pheno$outliers == TRUE | pheno$crypticQC == TRUE | pheno$P.filter == TRUE),]
+FailedSamples <- pheno[which(pheno$M.median < 1500 | pheno$U.median < 1000 | 
+                         pheno$bs < 80 | pheno$outliers == TRUE | pheno$crypticQC == TRUE | pheno$P.filter == TRUE),"Basename"]
+
+#Subset passed samples
+PassPheno <- pheno[-which(pheno$Basename %in% FailedSamples),]
+
+
+mSet <- mSet[, which(colnames(mSet) %in% PassPheno$Basename)]
+
+# Subset each region
+CNGPheno <- PassPheno[which(PassPheno$Brain_Region == "CNG"),]
+PFCPheno <- PassPheno[which(PassPheno$Brain_Region == "PFC"),]
+
+
+mSetCNG <-mSet[,CNGPheno$Basename]
+mSetPFC <-mSet[,PFCPheno$Basename]
+
+
+#then use dasen to normalise
+mSetCNG <-dasen(mSetCNG)
+mSetPFC <-dasen(mSetPFC)
+mSet <- dasen(mSet)
+
+save(mSetCNG, file = "/mnt/data1/LewyBodyMRC/Methylation/QC/FinalData/Dasen_mSetCNG.rdata")
+save(mSetPFC, file = "/mnt/data1/LewyBodyMRC/Methylation/QC/FinalData/Dasen_mSetPFC.rdata")
+save(mSet, file = "/mnt/data1/LewyBodyMRC/Methylation/QC/FinalData/Dasen_mSetFull.rdata")
+
+betas.cng <- betas(mSetCNG)
+betas.pfc <- betas(mSetPFC)
+
+save(betas, file =  "/mnt/data1/LewyBodyMRC/Methylation/QC/FinalData/betasPFC")
+save(betas, file = "/mnt/data1/LewyBodyMRC/Methylation/QC/FinalData/betasPFC.Rdata")
+
 ```
 
 In summary a total of `r length(FailedSamples)` failed technical QC steps summarsed above. Additionally, a set of `r length(pheno[which(pheno$Sex != pheno$predSex1),"Basename"])` remaining samples show mismatched Sex. If these can not be rectified from brain bank records they will also be removed from the analysis.
@@ -488,17 +519,5 @@ Finally: SNP probes, probes containing common SNPs, and probes with non-specific
 
 The QCed, normalised and filtered dataset is saved to LB_MRC_Norm_Filtered.rdat ready for subsequent analysis.
 
-```{r filtering, echo = FALSE}
-#betas<-betas(mSet)
 
-# crosshyb<-read.table("/mnt/data1/EPIC_reference/CrossHydridisingProbes_McCartney.txt", stringsAsFactors = FALSE)
-# snpProbes<-read.table("/mnt/data1/EPIC_reference/SNPProbes_McCartney.txt", stringsAsFactors = FALSE, header = TRUE)
-# snpProbes<-snpProbes[which(snpProbes$EUR_AF >= 0.05 & snpProbes$EUR_AF <= 0.95),]
-# 
-# betas<-betas[!(rownames(betas) %in% crosshyb[,1]), ]
-# betas<-betas[!(rownames(betas) %in% unique(snpProbes$IlmnID)), ]
-# betas<-betas[-grep("rs", rownames(betas)),]
-
-#save(pheno, betas, wlmn_est, file = "/mnt/data1/LewyBodyMRC/Methylation/QC/FinalData/Final_Filtered/LB_MRC_Norm_Filtered.rdat") 
-```
 
