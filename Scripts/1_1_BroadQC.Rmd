@@ -508,8 +508,23 @@ save(mSet, file = "/mnt/data1/LewyBodyMRC/Methylation/QC/FinalData/Dasen_mSetFul
 betas.cng <- betas(mSetCNG)
 betas.pfc <- betas(mSetPFC)
 
-save(betas, file =  "/mnt/data1/LewyBodyMRC/Methylation/QC/FinalData/betasPFC")
-save(betas, file = "/mnt/data1/LewyBodyMRC/Methylation/QC/FinalData/betasPFC.Rdata")
+# Remove cross hybridising and SNP containing probes 
+crosshyb<-read.table("/mnt/data1/EPIC_reference/CrossHydridisingProbes_McCartney.txt", stringsAsFactors = FALSE)
+snpProbes<-read.table("/mnt/data1/EPIC_reference/SNPProbes_McCartney.txt", stringsAsFactors = FALSE, header = TRUE)
+snpProbes<-snpProbes[which(snpProbes$EUR_AF >= 0.05 & snpProbes$EUR_AF <= 0.95),]
+# 
+betas.pfc<-betas.pfc[!(rownames(betas.pfc) %in% crosshyb[,1]), ]
+betas.pfc<-betas.pfc[!(rownames(betas.pfc) %in% unique(snpProbes$IlmnID)), ]
+betas.pfc<-betas.pfc[-grep("rs", rownames(betas.pfc)),]
+
+betas.cng<-betas.cng[!(rownames(betas.cng) %in% crosshyb[,1]), ]
+betas.cng<-betas.cng[!(rownames(betas.cng) %in% unique(snpProbes$IlmnID)), ]
+betas.cng<-betas.cng[-grep("rs", rownames(betas.cng)),]
+
+save(betas.pfc, file =  "/mnt/data1/LewyBodyMRC/Methylation/QC/FinalData/betasPFC")
+save(betas.cng, file = "/mnt/data1/LewyBodyMRC/Methylation/QC/FinalData/betasCNG.Rdata")
+
+
 
 ```
 
