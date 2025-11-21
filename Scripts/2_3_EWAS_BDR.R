@@ -139,7 +139,7 @@ LambdaInf<-function(pvals){ # pvals = vector of p values
 
 # 
 # cl<- makeCluster(12)
-# BDR_res_LB_Thal <- t(parApply(cl,betasLB[1:250,],1,EWAS,Braak_aSyn_stage,Sex,Age_death,PMD_min,NeuNNeg_Sox10Neg_IRF8Pos,NeuNPos_SOX6Neg,NeuNPos_SOX6Pos,NeuNNeg_Sox10Neg_IRF8Neg,Plate,braak_nft_stage,Thal))
+# BDR_res_LB_Thal <- t(parApply(cl,betasLB,1,EWAS,Braak_aSyn_stage,Sex,Age_death,PMD_min,NeuNNeg_Sox10Neg_IRF8Pos,NeuNPos_SOX6Neg,NeuNPos_SOX6Pos,NeuNNeg_Sox10Neg_IRF8Neg,Plate,braak_nft_stage,Thal))
 # stopCluster(cl)
 # BDR_res_LB_Thal(na.omit(BDR_res_LB_Thal[,4]))
 # # [1] 1.440808
