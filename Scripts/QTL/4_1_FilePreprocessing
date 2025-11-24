@@ -1,0 +1,276 @@
+# Preprocess SNP data for analysis
+# Options in effect:
+#   --bfile /mnt/data1/LewyBodyMRC/Genetic/PRS/LBMRC_Impute_QC6
+# --maf 0.05
+# --make-bed
+# --out LBMRC_chr_bp_05MAF
+# --update-name SNPconverter.txt
+# 
+# Hostname: knight.ex.ac.uk
+# Working directory: /mnt/data1/LewyBodyMRC/Genetic/PRS
+# 
+# Random number seed: 1675435973
+# 515799 MB RAM detected; reserving 257899 MB for main workspace.
+# Allocated 145068 MB successfully, after larger attempt(s) failed.
+# 7667825 variants loaded from .bim file.
+# 471 people (0 males, 0 females, 471 ambiguous) loaded from .fam.
+# Ambiguous sex IDs written to LBMRC_chr_bp_05MAF.nosex .
+# --update-name: 7667825 values updated.
+# Using 1 thread (no multithreaded calculations invoked).
+# Before main variant filters, 471 founders and 0 nonfounders present.
+# Calculating allele frequencies... done.
+# 2286291 variants removed due to minor allele threshold(s)
+# (--maf/--max-maf/--mac/--max-mac).
+# 5381534 variants and 471 people pass filters and QC.
+# Note: No phenotypes present.
+# --make-bed to LBMRC_chr_bp_05MAF.bed + LBMRC_chr_bp_05MAF.bim +
+#   LBMRC_chr_bp_05MAF.fam ... done.
+
+# Switch over to R to sort the fam and bim files
+
+#R script for preparing directory structure and data for mQTL analysis
+.libPaths("/lustre/projects/Research_Project-T112069/packages")
+library(data.table)
+load("/lustre/projects/Research_Project-T112069/Meth/EWAS/Meta/Meta/MultiMeta_FullCohort.Rdata")
+
+# This section of code loads in the meta analysis summary statistics
+# Processes them for the FDR significant results and carries those forward
+# to create a genomic locations file for QTL analysis. 
+resMetaCC <- as.data.frame(allSumstat)
+epicMani <-  fread("/lustre/projects/Research_Project-T112069/Meth/reference/MethylationEPIC_v-1-0_B4.csv",skip = 7)
+epicMani <- as.data.frame(epicMani)
+rownames(epicMani) <- epicMani$IlmnID
+RESULTS <- cbind(resMetaCC,epicMani[rownames(resMetaCC),])
+colnames(RESULTS)[which(colnames(RESULTS)== "Fixed_P")] <- "P"
+colnames(RESULTS)[which(colnames(RESULTS)== "MAPINFO")] <- "BP"
+colnames(RESULTS)[which(colnames(RESULTS)== "Fixed_Effect")] <- "Effect"
+RESULTS <- RESULTS[order(RESULTS$P),]
+RESULTS$FDR <- p.adjust(RESULTS$P,method = "fdr")
+RESULTS <- RESULTS[which(RESULTS$FDR < 0.05),]
+resSub <- RESULTS[,c("CHR","BP")]
+resSub$end <- resSub$BP
+colnames(resSub) <- c("chr","start","end")
+write.csv(resSub, file = "/lustre/projects/Research_Project-T112069/Meth/QTL/Data/genomicLocations_FDR_Meta.csv")
+
+# This section does the same, but for nominal associations (P < 1e-5)
+# Note, this analysis is deprecated as analysis was focused to the FDR significant sites
+RESULTS <- cbind(resMetaCC,epicMani[rownames(resMetaCC),])
+colnames(RESULTS)[which(colnames(RESULTS)== "Fixed_P")] <- "P"
+colnames(RESULTS)[which(colnames(RESULTS)== "MAPINFO")] <- "BP"
+colnames(RESULTS)[which(colnames(RESULTS)== "Fixed_Effect")] <- "Effect"
+RESULTS <- RESULTS[order(RESULTS$P),]
+RESULTS <- RESULTS[which(RESULTS$P < 1e-5),]
+resSub <- RESULTS[,c("CHR","BP")]
+resSub$end <- resSub$BP
+colnames(resSub) <- c("chr","start","end")
+write.csv(resSub, file = "/lustre/projects/Research_Project-T112069/Meth/QTL/Data/genomicLocations_Nominal_Meta.csv")
+
+# Set up Genotyping pheno File
+famFile <- read.table("/lustre/projects/Research_Project-T112069/Meth/Meta/FiveCell/mQTL/LBMRC_chr_bp_05MAF.fam") 
+phenoFile <- read.csv("/lustre/projects/Research_Project-T112069/Genetics/PRS_Pheno.csv")
+phenoFile$IndividualID <- gsub("/","_",phenoFile$IndividualID)
+# There's a bunch of messed up names in the fam files
+
+# library(stringr)
+# dodgeNames <- famFile[-which(famFile$V2 %in% phenoFile$Basename),"V2"]
+# fixedNames <- paste(str_sub(dodgeNames,end = 14),"0",str_sub(dodgeNames,start = 15),sep = "")
+# famFile[-which(famFile$V2 %in% phenoFile$Basename),c("V1","V2")] <- fixedNames
+# rownames(phenoFile) <- phenoFile$Basename
+# famFile[,c("V1","V2")] <- phenoFile[famFile$V1,"IndividualID"]
+
+write.table(famFile, file = "/lustre/projects/Research_Project-T112069/Meth/Meta/FiveCell/mQTL/LBMRC_chr_bp_05MAF.fam",quote = F,col.names = F,row.names = F)
+
+# Load in methylation data 
+load("Meth/Methylation/QC/FinalData/betasPFC.Rdata")
+load("Meth/Methylation/QC/ewasPheno.Rdata")
+load("Meth/Methylation/QC/FinalData/betasCNG.Rdata")
+
+# Merge data and index
+betas <- cbind(betas.cng,betas.pfc)
+betas <- betas[,rownames(phenoP)]
+phenoP$count <- 1
+betasP <-  betas[,phenoP$Basename]
+
+# Subset cohort and define specific beta matrices
+rownames(phenoP) <- phenoP$Basename
+betasPFC <- betasP[,rownames(phenoP[which(phenoP$Brain_Region == 2),])]
+betasCNG <- betasP[,rownames(phenoP[which(phenoP$Brain_Region == 1),])]
+phenoPFC <- phenoP[which(phenoP$Brain_Region == 2),]
+phenoCNG <- phenoP[which(phenoP$Brain_Region == 1),]
+
+# Process individual ID's to match the genotyping data
+phenoPFC$ID <- gsub("/","_",phenoPFC$ID)
+colnames(betasPFC) <- phenoPFC[colnames(betasPFC),"ID"]
+phenoCNG$ID <- gsub("/","_",phenoCNG$ID)
+colnames(betasCNG) <- phenoCNG[colnames(betasCNG),"ID"]
+
+# Subset tables
+genomicLocations_FDR_Meta <- read.csv(file = "/lustre/projects/Research_Project-T112069/Meth/QTL/Data/genomicLocations_FDR_Meta.csv")
+genomicLocations_Nominal_Meta <- read.csv("/lustre/projects/Research_Project-T112069/Meth/QTL/Data/genomicLocations_Nominal_Meta.csv")
+
+# Subset beta matrices to match the targets of interest
+betasPFC_FDR_Meta <- betasPFC[genomicLocations_FDR_Meta$X,phenoPFC$ID]
+betasPFC_Nominal_Meta <- betasPFC[genomicLocations_Nominal_Meta$X,phenoPFC$ID]
+betasCNG_FDR_Meta <- betasCNG[genomicLocations_FDR_Meta$X,phenoCNG$ID]
+betasCNG_Nominal_Meta <- betasCNG[genomicLocations_Nominal_Meta$X,phenoCNG$ID]
+
+#
+saveRDS(betasPFC_Nominal_Meta,"/lustre/projects/Research_Project-T112069/Meth/QTL/Data/betasPFC_Nominal_Meta.rds")
+saveRDS(betasCNG_Nominal_Meta,"/lustre/projects/Research_Project-T112069/Meth/QTL/Data/betasCNG_Nominal_Meta.rds")
+
+rownames(phenoCNG) <- phenoCNG$ID
+rownames(phenoPFC) <- phenoPFC$ID
+
+phenoPFC_Final <- phenoPFC[,c("Sex","Age","NeuNNeg_Sox10Neg_IRF8Pos","NeuNPos_SOX6Neg","NeuNPos_SOX6Pos","NeuNNeg_Sox10Neg_IRF8Neg")]
+phenoCNG_Final <- phenoCNG[,c("Sex","Age","NeuNNeg_Sox10Neg_IRF8Pos","NeuNPos_SOX6Neg","NeuNPos_SOX6Pos","NeuNNeg_Sox10Neg_IRF8Neg")]
+
+write.csv(phenoPFC_Final,"/lustre/projects/Research_Project-T112069/Meth/QTL/Data/phenoPFC.csv")
+write.csv(phenoCNG_Final,"/lustre/projects/Research_Project-T112069/Meth/QTL/Data/phenoCNG.csv")
+
+sampleSet <- data.frame(FID = intersect(famFile$V1,rownames(phenoPFC_Final)), IID = intersect(famFile$V1,rownames(phenoPFC_Final)))
+write.table(sampleSet, file = "/lustre/projects/Research_Project-T112069/Meth/QTL/Data/keepIDs.txt",
+            quote = FALSE,row.names = FALSE)
+
+# subset for the SNCA region
+# This section of code loads in the meta analysis summary statistics
+# Processes them for the FDR significant results and carries those forward
+# to create a genomic locations file for QTL analysis. 
+resMetaCC <- as.data.frame(allSumstat)
+epicMani <-  fread("/lustre/projects/Research_Project-T112069/Meth/reference/MethylationEPIC_v-1-0_B4.csv",skip = 7)
+epicMani <- as.data.frame(epicMani)
+rownames(epicMani) <- epicMani$IlmnID
+RESULTS <- cbind(resMetaCC,epicMani[rownames(resMetaCC),])
+colnames(RESULTS)[which(colnames(RESULTS)== "Fixed_P")] <- "P"
+colnames(RESULTS)[which(colnames(RESULTS)== "MAPINFO")] <- "BP"
+colnames(RESULTS)[which(colnames(RESULTS)== "Fixed_Effect")] <- "Effect"
+RESULTS <- RESULTS[order(RESULTS$P),]
+sub <- RESULTS[which(RESULTS$CHR == "4" & RESULTS$BP >=(90647041-10000) & RESULTS$BP <=(90760556+10000)),]
+
+resSub <- sub[,c("CHR","BP")]
+resSub$end <- resSub$BP
+colnames(resSub) <- c("chr","start","end")
+write.csv(resSub, file = "/lustre/projects/Research_Project-T112069/Meth/QTL/Data/genomicLocations_SNCA.csv")
+
+betasPFC_SNCA <- betasPFC[rownames(resSub),phenoPFC$ID]
+betasCNG_SNCA <- betasCNG[rownames(resSub),phenoCNG$ID]
+saveRDS(betasPFC_SNCA,"/lustre/projects/Research_Project-T112069/Meth/QTL/Data/betasPFC_SNCA.rds")
+saveRDS(betasCNG_SNCA,"/lustre/projects/Research_Project-T112069/Meth/QTL/Data/betasCNG_SNCA.rds")
+
+# Process the bim file for naming
+lbBim <- fread("/lustre/projects/Research_Project-T112069/Meth/QTL/Data/LBMRC_chr_bp_05MAF.bim") 
+lbBim$V2 <- paste(lbBim$V2, lbBim$V6,lbBim$V5,sep = "_")
+write.table(lbBim, file = "/lustre/projects/Research_Project-T112069/Meth/QTL/Data/LBMRC_chr_bp_05MAF.bim", quote = FALSE, row.names = FALSE, col.names = FALSE)
+
+
+
+#### Process fam file to only include those in meta analysis
+plink2 --bfile /lustre/projects/Research_Project-T112069/Meth/QTL/Data/LBMRC_chr_bp_05MAF --keep /lustre/projects/Research_Project-T112069/Meth/QTL/Data/keepIDs.txt --make-bed --out /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples
+
+# Options in effect:
+#   --bfile /lustre/projects/Research_Project-T112069/Meth/QTL/Data/LBMRC_chr_bp_05MAF
+# --keep /lustre/projects/Research_Project-T112069/Meth/QTL/Data/keepIDs.txt
+# --make-bed
+# --out /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples
+# 
+# Random number seed: 1763990754
+# 256720 MiB RAM detected; reserving 128360 MiB for main workspace.
+# Using up to 16 threads (change this with --threads).
+# 471 samples (0 females, 0 males, 471 ambiguous; 471 founders) loaded from
+# /lustre/projects/Research_Project-T112069/Meth/QTL/Data/LBMRC_chr_bp_05MAF.fam.
+# 5381534 variants loaded from
+# /lustre/projects/Research_Project-T112069/Meth/QTL/Data/LBMRC_chr_bp_05MAF.bim.
+# Note: No phenotype data present.
+# --keep: 386 samples remaining.
+# 386 samples (0 females, 0 males, 386 ambiguous; 386 founders) remaining after
+# main filters.
+# Writing
+# /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples.fam
+# ... done.
+# Writing
+# /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples.bim
+# ... done.
+# Writing
+# /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples.bed
+# ... done.
+
+
+plink2 --bfile /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples --freq --out /lustre/projects/Research_Project-T112069/Meth/QTL/Data/freq_test
+# Options in effect:
+#   --bfile /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples
+# --freq
+# --out /lustre/projects/Research_Project-T112069/Meth/QTL/Data/freq_test
+# 
+# 256720 MiB RAM detected; reserving 128360 MiB for main workspace.
+# Using up to 16 threads (change this with --threads).
+# 386 samples (0 females, 0 males, 386 ambiguous; 386 founders) loaded from
+# /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples.fam.
+# 5381534 variants loaded from
+# /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples.bim.
+# Note: No phenotype data present.
+# Calculating allele frequencies... done.
+# --freq: Allele frequencies (founders only) written to
+# /lustre/projects/Research_Project-T112069/Meth/QTL/Data/freq_test.afreq .
+
+
+plink2 --bfile /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples --maf 0.05 --make-bed --out /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples_maf05
+
+# Options in effect:
+#   --bfile /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples
+# --maf 0.05
+# --make-bed
+# --out /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples_maf05
+
+# Using up to 16 threads (change this with --threads).
+# 386 samples (0 females, 0 males, 386 ambiguous; 386 founders) loaded from
+# /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples.fam.
+# 5381534 variants loaded from
+# /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples.bim.
+# Note: No phenotype data present.
+# Calculating allele frequencies... done.
+# 31825 variants removed due to allele frequency threshold(s)
+# (--maf/--max-maf/--mac/--max-mac).
+# 5349709 variants remaining after main filters.
+
+
+
+# Perform frequency counting for 
+plink2 --bfile /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples_maf05 --geno-counts --out /lustre/projects/Research_Project-T112069/Meth/QTL/Data/allele_counts
+
+# Options in effect:
+#   --bfile /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples_maf05
+# --geno-counts
+# --out allele_counts
+# 
+# 256720 MiB RAM detected; reserving 128360 MiB for main workspace.
+# Using up to 16 threads (change this with --threads).
+# 386 samples (0 females, 0 males, 386 ambiguous; 386 founders) loaded from
+# /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples_maf05.fam.
+# 5349709 variants loaded from
+# /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples_maf05.bim.
+# Note: No phenotype data present.
+# Calculating allele frequencies... done.
+# --geno-counts: Genotype counts written to allele_counts.gcount .
+
+
+# Load in the variant frequencies
+geno_freq<- fread("/lustre/projects/Research_Project-T112069/Meth/QTL/Data/allele_counts.gcount")
+keepVariants <- geno_freq[-which(geno_freq$TWO_ALT_GENO_CTS <5),]
+write.table(keepVariants,file ="/lustre/projects/Research_Project-T112069/Meth/QTL/Data/high_freq_snps.txt",row.names = FALSE,col.names = FALSE, quote = FALSE)
+
+
+plink2 --bfile /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples_maf05 --extract high_freq_snps.txt --make-bed --out /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_chr_bp
+
+# Logging to /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_chr_bp.log.
+# Options in effect:
+#   --bfile /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples_maf05
+# --extract high_freq_snps.txt
+# --make-bed
+# --out /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_chr_bp
+# 
+# Using up to 16 threads (change this with --threads).
+# 386 samples (0 females, 0 males, 386 ambiguous; 386 founders) loaded from
+# /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples_maf05.fam.
+# 5349709 variants loaded from
+# /lustre/projects/Research_Project-T112069/Meth/QTL/Data/filtered_samples_maf05.bim.
+# Note: No phenotype data present.
+# --extract: 4131464 variants remaining.
