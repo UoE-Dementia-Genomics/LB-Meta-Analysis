@@ -81,9 +81,9 @@ phenoFile$IndividualID <- gsub("/","_",phenoFile$IndividualID)
 write.table(famFile, file = "/lustre/projects/Research_Project-T112069/Meth/Meta/FiveCell/mQTL/LBMRC_chr_bp_05MAF.fam",quote = F,col.names = F,row.names = F)
 
 # Load in methylation data 
-load("Meth/Methylation/QC/FinalData/betasPFC.Rdata")
-load("Meth/Methylation/QC/ewasPheno.Rdata")
-load("Meth/Methylation/QC/FinalData/betasCNG.Rdata")
+load("/lustre/projects/Research_Project-T112069/Meth/Methylation/QC/FinalData/betasPFC.Rdata")
+load("/lustre/projects/Research_Project-T112069/Meth/Methylation/QC/ewasPheno.Rdata")
+load("/lustre/projects/Research_Project-T112069/Meth/Methylation/QC/FinalData/betasCNG.Rdata")
 
 # Merge data and index
 betas <- cbind(betas.cng,betas.pfc)
@@ -117,6 +117,8 @@ betasCNG_Nominal_Meta <- betasCNG[genomicLocations_Nominal_Meta$X,phenoCNG$ID]
 #
 saveRDS(betasPFC_Nominal_Meta,"/lustre/projects/Research_Project-T112069/Meth/QTL/Data/betasPFC_Nominal_Meta.rds")
 saveRDS(betasCNG_Nominal_Meta,"/lustre/projects/Research_Project-T112069/Meth/QTL/Data/betasCNG_Nominal_Meta.rds")
+saveRDS(betasPFC_FDR_Meta,"/lustre/projects/Research_Project-T112069/Meth/QTL/Data/betasPFC_FDR_Meta.rds")
+
 
 rownames(phenoCNG) <- phenoCNG$ID
 rownames(phenoPFC) <- phenoPFC$ID
