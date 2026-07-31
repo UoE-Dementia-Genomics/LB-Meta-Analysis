@@ -1,5 +1,5 @@
 # Interrogating epigenetics in Lewy body disease in a multi-cohort meta-analysis of DNA methylation
-Supplementary methods, data and scripts  
+Supplementary methods, data and scripts. Primary data available at GEO accession [GSE341563](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE341563)
 
 ## Data Citations
 Pihlstrøm L, Shireby G, Geut H, Henriksen SP, Rozemuller AJM, Tunold JA, Hannon E, Francis P, Thomas AJ, Love S, Mill J, van de Berg WDJ, Toft M. Epigenome-wide association study of human frontal cortex identifies differential methylation in Lewy body pathology. Nat Commun. 2022 Aug 22;13(1):4932. doi: 10.1038/s41467-022-32619-z. PMID: 35995800; PMCID: PMC9395387.
