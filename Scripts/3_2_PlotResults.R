@@ -28,11 +28,19 @@ library(ggrepel)
 ##### Data loading ######
 #########################
 # Load and merge cohort specific and meta analysis summary statistics
-load("/lustre/projects/Research_Project-T112069/Meth/EWAS/Meta/UKBBN/res_UKBBN_CrossCortex.Rdata")
+load("res_UKBBN_CrossCortex.Rdata")
+load("res_UKBBN_cng.Rdata")
+load("res_UKBBN_pfc.Rdata")
+load("res_UKBBN_CrossCortex_Filtered.Rdata")
+load("res_UKBBN_CrossCortex_Thal_SV3.Rdata")
 res_UKBBN <- res_UKBBN[,-3]
 colnames(res_UKBBN) <- c("Values","SE","T","P")
-load("/lustre/projects/Research_Project-T112069/Meth/EWAS/Meta/NBB/NBB_knownCovar_SV3.Rdata")
-load("/lustre/projects/Research_Project-T112069/Meth/EWAS/Meta/BDR/BDR_Res_SV1.Rdata")
+load("NBB_knownCovar_SV3.Rdata")
+load("NBB_knownCovar_SV3_filtered.Rdata")
+load("NBB_knownCovar_SV3_Thal.Rdata")
+load("BDR_Res_SV1.Rdata")
+load("BDR_Res_Thal_SV1.Rdata")
+
 
 resUK <- res_UKBBN
 resNBB <- res_NBB_SV3
@@ -41,18 +49,45 @@ resBDR <- BDR_res_LB_SV1
 overlap <-Reduce(intersect, list(rownames(resUK),rownames(resNBB),rownames(resBDR)))
 resUK <- resUK[overlap,]
 resNBB <- resNBB[overlap,]
-
 resBDR <- resBDR[overlap,]
 
-colnames(resUK) <- c("Beta_UK","SE_UK","T_UK","P_UK")
-colnames(resNBB) <- c("Beta_NBB","SE_NBB","T_NBB","P_NBB")
-colnames(resBDR) <- c("Beta_BDR","SE_BDR","T_BDR","P_BDR")
 
 resAll <- cbind(resUK, resNBB,resBDR)
 resAll <- as.data.frame(resAll)
 
-load("/lustre/projects/Research_Project-T112069/Meth/EWAS/Meta/Meta/MultiMeta_FullCohort.Rdata")
+resUK_thal <- UKBBN_res_Thal_SV3
+resUK_thal <- resUK_thal[overlap,-3]
+resNBB_thal <- NBB_res_SV3_Thal[overlap,]
+resBDR_thal <- BDR_res_LB_Thal_SV1[overlap,]
+
+resUK_pure <- res_UKBBN_Filtered
+resUK_pure <- resUK_pure[overlap,-3]
+resNBB_pure <- NBB_res_SV3_filtered[overlap,]
+
+
+resUK_pfc <- res_UKBBN_pfc[overlap,]
+resUK_acc <- res_UKBBN_cng[overlap,]
+
+colnames(resUK) <- c("Beta","SE","T","P")
+colnames(resNBB) <- c("Beta","SE","T","P")
+colnames(resBDR) <- c("Beta","SE","T","P")
+colnames(resUK_pure) <- c("Beta","SE","T","P")
+colnames(resNBB_pure) <- c("Beta","SE","T","P")
+colnames(resUK_thal) <- c("Beta","SE","T","P")
+colnames(resNBB_thal) <- c("Beta","SE","T","P")
+colnames(resBDR_thal) <- c("Beta","SE","T","P")
+
+
+
+
+load("MultiMeta_FullCohort.Rdata")
 resMetaCC <- allSumstat[overlap,]
+load("MultiMeta_PureLB.Rdata")
+lowSumstat <- lowSumstat[overlap,]
+load("MultiMeta_ThalControlled.Rdata")
+thalSumstat <- thalSumstat[overlap,]
+load("PFC_Meta_FullCohort.Rdata")
+pfcSumstat <- pfcSumstat[overlap,]
 
 #########################
 ##### QQ plots ##########
@@ -64,27 +99,72 @@ LambdaInf<-function(pvals){ # pvals = vector of p values
   return(lambda)
 }
 
-resUK <- as.data.frame(resUK)
-resNBB <- as.data.frame(resNBB)
-resBDR <- as.data.frame(resBDR)
-infUK <- signif(LambdaInf(na.omit(resUK[order(resUK$P_UK),"P_UK"])),4)
-infNBB <- signif(LambdaInf(resNBB[order(resNBB$P_NBB),"P_NBB"]),4)
-infBDR <- signif(LambdaInf(resBDR[order(resBDR$P_BDR),"P_BDR"]),4)
-infMeta <- signif(LambdaInf(resMetaCC[,3]),4)
+colnames(resMetaCC)[colnames(resMetaCC) == "Fixed_P"] <- "P"
+colnames(lowSumstat)[colnames(lowSumstat) == "Fixed_P"] <- "P"
+colnames(thalSumstat)[colnames(thalSumstat) == "Fixed_P"] <- "P"
+colnames(pfcSumstat)[colnames(pfcSumstat) == "Fixed_P"] <- "P"
 
-# Make a mega data frame of all observed vs. expected p.values
-# names are formatted in "Cohort" "Lambda Inflation"
-tSet <- rbind(data.frame(dataset = paste("UKBBN",infUK),observed.pvals = resUK[order(resUK$P_UK),"P_UK"],expected.pvals = seq(from = 1/length(overlap),to = 1, by = 1/length(overlap))),
-              data.frame(dataset = paste("NBB",infNBB),observed.pvals = resNBB[order(resNBB$P_NBB),"P_NBB"],expected.pvals = seq(from = 1/length(overlap),to = 1, by = 1/length(overlap))),
-              data.frame(dataset = paste("BDR",infBDR),observed.pvals = resBDR[order(resBDR$P_BDR),"P_BDR"],expected.pvals = seq(from = 1/length(overlap),to = 1, by = 1/length(overlap))),
-              data.frame(dataset = paste("Meta",infMeta),observed.pvals = resMetaCC[order(resMetaCC[,3]),3],expected.pvals = seq(from = 1/length(overlap),to = 1, by = 1/length(overlap))))
 
-# Plot qq-plots
-png("/lustre/projects/Research_Project-T112069/Meth/EWAS/Meta/Plots/quickQQ.png",width = 800,height = 800,res = 200,type = "cairo-png")
-ggplot(tSet, aes(y = -log10(observed.pvals), x = -log10(expected.pvals), color = factor(dataset, levels = c(paste("Meta",infMeta),
-                                                                                                            paste("UKBBN",infUK),
-                                                                                                            paste("NBB",infNBB),
-                                                                                                            paste("BDR",infBDR)))))+
+fullCohort <- list(Meta = as.data.frame(resMetaCC),
+                   UK = as.data.frame(resUK), 
+                   NBB = as.data.frame(resNBB), 
+                   BDR = as.data.frame(resBDR))
+
+pureCohort <- list(Meta = as.data.frame(lowSumstat),
+                   UK = as.data.frame(resUK_pure), 
+                   NBB = as.data.frame(resNBB_pure))
+
+thalCohort <- list(Meta = as.data.frame(thalSumstat),
+                   UK = as.data.frame(resUK_thal), 
+                   NBB = as.data.frame(resNBB_thal),
+                   BDR = as.data.frame(resBDR_thal))
+
+pfcCohort <- list(Meta = as.data.frame(pfcSumstat),
+                  UK_PFC = as.data.frame(resUK_pfc), 
+                  UK_ACC = as.data.frame(resUK_acc))
+
+process_pval_list <- function(datasets) {
+  
+  tSet.list <- lapply(names(datasets), function(nm) {
+    
+    df <- datasets[[nm]]
+    
+    # order by P (smallest → largest)
+    df <- df[order(df$P), ]
+    
+    # observed p-values
+    observed <- df$P
+    
+    # expected p-values
+    n <- length(observed)
+    expected <- seq(1/n, 1, by = 1/n)
+    
+    # dataset label
+    dataset <- paste(
+      nm,
+      signif(LambdaInf(na.omit(observed)), 4)
+    )
+    
+    # return ONLY required columns
+    data.frame(
+      dataset = dataset,
+      observed.pvals = observed,
+      expected.pvals = expected
+    )
+  })
+  
+  # bind all together
+  tSet <- do.call(rbind, tSet.list)
+  
+  return(tSet)
+}
+
+tSet <- process_pval_list(fullCohort)
+tSet_thal <- process_pval_list(thalCohort)
+tSet_pure <- process_pval_list(pureCohort)
+tSet_pfc <- process_pval_list(pfcCohort)
+
+fullCohortPlot <- ggplot(tSet, aes(y = -log10(observed.pvals), x = -log10(expected.pvals), color = factor(dataset, levels = unique(tSet$dataset))))+
   geom_point()+
   geom_abline(slope = 1,linetype = "dashed")+
   scale_color_brewer(palette = "Dark2")+
@@ -95,7 +175,47 @@ ggplot(tSet, aes(y = -log10(observed.pvals), x = -log10(expected.pvals), color =
   labs(color = "")+
   xlab("-log10(Expected p-values)")+
   ylab("-log10(Observed p-values)")
+
+thalCohortPlot <- ggplot(tSet_thal, aes(y = -log10(observed.pvals), x = -log10(expected.pvals), color = factor(dataset, levels = unique(tSet_thal$dataset))))+
+  geom_point()+
+  geom_abline(slope = 1,linetype = "dashed")+
+  scale_color_brewer(palette = "Dark2")+
+  theme_cowplot()+
+  scale_x_continuous(breaks = c(0:7),expand = expansion(mult = c(0, .1))) +
+  scale_y_continuous(breaks = seq(from = 0, to = 12, by = 2),expand = expansion(mult = c(0, .1))) +
+  theme(legend.position = c(0.1, 0.8))+
+  labs(color = "")+
+  xlab("-log10(Expected p-values)")+
+  ylab("-log10(Observed p-values)")
+
+pureCohortPlot <- ggplot(tSet_pure, aes(y = -log10(observed.pvals), x = -log10(expected.pvals), color = factor(dataset, levels = unique(tSet_pure$dataset))))+
+  geom_point()+
+  geom_abline(slope = 1,linetype = "dashed")+
+  scale_color_brewer(palette = "Dark2")+
+  theme_cowplot()+
+  scale_x_continuous(breaks = c(0:7),expand = expansion(mult = c(0, .1))) +
+  scale_y_continuous(breaks = seq(from = 0, to = 12, by = 2),expand = expansion(mult = c(0, .1))) +
+  theme(legend.position = c(0.1, 0.8))+
+  labs(color = "")+
+  xlab("-log10(Expected p-values)")+
+  ylab("-log10(Observed p-values)")
+
+pfcCohortPlot <- ggplot(tSet_pfc, aes(y = -log10(observed.pvals), x = -log10(expected.pvals), color = factor(dataset, levels = unique(tSet_pfc$dataset))))+
+  geom_point()+
+  geom_abline(slope = 1,linetype = "dashed")+
+  scale_color_brewer(palette = "Dark2")+
+  theme_cowplot()+
+  scale_x_continuous(breaks = c(0:7),expand = expansion(mult = c(0, .1))) +
+  scale_y_continuous(breaks = seq(from = 0, to = 12, by = 2),expand = expansion(mult = c(0, .1))) +
+  theme(legend.position = c(0.1, 0.8))+
+  labs(color = "")+
+  xlab("-log10(Expected p-values)")+
+  ylab("-log10(Observed p-values)")
+
+png("AllQQ.png",width = 1600, height = 1600,res = 200)
+plot_grid(fullCohortPlot,pureCohortPlot,thalCohortPlot,pfcCohortPlot,ncol = 2,labels = c("A)","B)","C)","D)"))
 dev.off()
+
 
 ################################
 ##### Manhattan plots ##########
@@ -104,7 +224,16 @@ dev.off()
 epicMani <-  fread("/lustre/projects/Research_Project-T112069/Meth/reference/MethylationEPIC_v-1-0_B4.csv",skip = 7)
 epicMani <- as.data.frame(epicMani)
 rownames(epicMani) <- epicMani$IlmnID
-RESULTS <- cbind(resMetaCC,epicMani[rownames(resMetaCC),])
+idx <- match(rownames(resMetaCC), rownames(epicMani))
+RESULTS <- cbind(
+  resMetaCC,
+  epicMani[idx, , drop = FALSE]
+)
+
+sigRes <- RESULTS[which(RESULTS$Fixed_P <= 1e-5),]
+sigRes <- cbind(sigRes,resAll[rownames(sigRes),])
+sigRes <- sigRes[order(sigRes$Fixed_P),]
+
 colnames(RESULTS)[which(colnames(RESULTS)== "Fixed_P")] <- "P"
 colnames(RESULTS)[which(colnames(RESULTS)== "MAPINFO")] <- "BP"
 
@@ -294,36 +423,116 @@ dev.off()
 ###### Plot effect size comp ######
 ###################################
 
-load("/lustre/projects/Research_Project-T112069/Meth/EWAS/Meta/Meta/MultiMeta_FullCohort.Rdata")
+load("MultiMeta_FullCohort.Rdata")
 highNFTsub <- as.data.frame(allSumstat)
 colnames(highNFTsub)[which(colnames(highNFTsub)%in% c("Fixed_Effect","Fixed_SE","Fixed_P"))] <- c("Effect","SE","P")
 highNFTsub <- highNFTsub[which(p.adjust(highNFTsub$P,method = "fdr") < 0.05),]
-load("/lustre/projects/Research_Project-T112069/Meth/EWAS/Meta/Meta/MultiMeta_ThalControlled.Rdata")
+load("MultiMeta_ThalControlled.Rdata")
 thalSumstat <- as.data.frame(thalSumstat)
-colnames(thalSumstat)[which(colnames(thalSumstat)%in% c("Fixed_Effect","Fixed_SE","Fixed_P"))] <- c("Effect_Thal","SE_Thal","P_Thal")
 
 
-plotComp <- cbind(highNFTsub[,c("Effect","SE","P")],thalSumstat[rownames(highNFTsub),c("Effect_Thal","SE_Thal","P_Thal")])
+thalSig <- thalSumstat[which(thalSumstat$Fixed_P < 1e-5),]
+idx <- match(rownames(thalSig), rownames(epicMani))
+thalSig <- cbind(
+  thalSig,
+  epicMani[idx, , drop = FALSE]
+)
 
-corPlot <- ggplot(plotComp, aes(x = Effect, y = Effect_Thal)) +
+# write.csv(thalSig, file = "Supplementary4_ThalMetaAnalysisResults.csv")
+
+colnames(thalSumstat)[which(colnames(thalSumstat)%in% c("Fixed_Effect","Fixed_SE","Fixed_P"))] <- c("Effect_Sensitivity","SE_Sensitivity","P_Sensitivity")
+
+load("MultiMeta_PureLB.Rdata")
+lowSumstat <- as.data.frame(lowSumstat)
+
+lowSig <- lowSumstat[which(lowSumstat$Fixed_P < 1e-5),]
+idx <- match(rownames(lowSig), rownames(epicMani))
+lowSig <- cbind(
+  lowSig,
+  epicMani[idx, , drop = FALSE]
+)
+
+# write.csv(lowSig, file = "Supplementary3_LowMetaAnalysisResults.csv")
+
+colnames(lowSumstat)[which(colnames(lowSumstat)%in% c("Fixed_Effect","Fixed_SE","Fixed_P"))] <- c("Effect_Sensitivity","SE_Sensitivity","P_Sensitivity")
+plotComp1 <- cbind(highNFTsub[,c("Effect","SE","P")],thalSumstat[rownames(highNFTsub),c("Effect_Sensitivity","SE_Sensitivity","P_Sensitivity")])
+plotComp2 <- cbind(highNFTsub[,c("Effect","SE","P")],lowSumstat[rownames(highNFTsub),c("Effect_Sensitivity","SE_Sensitivity","P_Sensitivity")])
+plotComp1$Analysis <- "Thal Controlled"
+plotComp2$Analysis <- "Pure LB"
+plotComp <- rbind(plotComp1,plotComp2)
+
+write.csv(plotComp, file = "Supplementary5_OverlapSensitivity.csv")
+
+effectComp <- ggplot(plotComp, aes(x = Effect, y = Effect_Sensitivity)) +
   # Error bars for Effect
-  geom_errorbar(aes(ymin = Effect_Thal - SE_Thal, ymax = Effect_Thal + SE_Thal), width = 0, color = "gray50") +
+  geom_errorbar(aes(ymin = Effect_Sensitivity - SE_Sensitivity, ymax = Effect_Sensitivity + SE_Sensitivity), width = 0, color = "gray50") +
   # Error bars for Effect_Low
   geom_errorbarh(aes(xmin = Effect - SE, xmax = Effect + SE), height = 0, color = "gray50") +
   # Points with color and size mappings
-  geom_point(aes(fill = -log10(P_Thal), size = -log10(P)), shape = 21, color = "black") +
+  geom_point(aes(fill = -log10(P_Sensitivity), size = -log10(P)), shape = 21, color = "black") +
   scale_fill_viridis_c() + # Color mapping for fill
   scale_size(range = c(2, 6)) + # Adjust point size range
   theme_bw() +
-  labs(x = "Primary Meta Estimate (+/- SE)", y = "Thal Controlled Meta Estimate (+/- SE)", fill = "-log10(Thal Controlled P-value)",size = "-log10(Primary P-value)") +
-  theme(legend.position = "bottom", 
-        legend.box = "vertical")+
+  labs(x = "Primary Meta Estimate (+/- SE)", y = "Sensitivity Meta Estimate (+/- SE)", fill = "Sensitivity \n P-value",size = "Primary \n P-value") +
+  theme(legend.position = "left", 
+        legend.box = "bottom",strip.text.x = element_text(size = 12))+
   ylim(-0.0081,0.0051)+
   xlim(-0.0081,0.0051)+
   geom_hline(yintercept = 0)+
-  geom_vline(xintercept = 0)
+  geom_vline(xintercept = 0)+
+  facet_grid(~Analysis)
 
 
+load("PFC_Meta_FullCohort.Rdata")
+colnames(pfcSumstat) <- paste("pfc_",colnames(pfcSumstat),sep = "")
+pfcSummary <- cbind(pfcSumstat[rownames(highNFTsub),],highNFTsub)
+
+colnames(res_UKBBN_pfc) <- paste("pfc_",colnames(res_UKBBN_pfc),sep = "")
+colnames(res_UKBBN_cng) <- paste("acc_",colnames(res_UKBBN_cng),sep = "")
+crossBrainSummary <- cbind(res_UKBBN_pfc[rownames(highNFTsub),],res_UKBBN_cng[rownames(highNFTsub),])
+
+png("pfc_EffectSizeComp.png",width = 1200, height = 1800,res = 220)
+plot_grid(
+    ggplot(pfcSummary, aes(x = Effect, y = pfc_Fixed_Effect )) +
+        # Error bars for Effect
+        geom_errorbar(aes(ymin = pfc_Fixed_Effect  - pfc_Fixed_SE, ymax = pfc_Fixed_Effect + pfc_Fixed_SE), width = 0, color = "gray50") +
+        # Error bars for Effect_Low
+        geom_errorbarh(aes(xmin = Effect - SE, xmax = Effect + SE), height = 0, color = "gray50") +
+        # Points with color and size mappings
+        geom_point(aes(fill = -log10(pfc_Fixed_P), size = -log10(P)), shape = 21, color = "black") +
+        scale_fill_viridis_c() + # Color mapping for fill
+        scale_size(range = c(2, 6)) + # Adjust point size range
+        theme_bw() +
+        labs(x = "Primary Meta Estimate (+/- SE)", y = "PFC Specific Estimate (+/- SE)", fill = "PFC Specific \n P-value",size = "Primary \n P-value") +
+        theme(legend.position = "right", 
+              legend.box = "bottom",strip.text.x = element_text(size = 12))+
+        ylim(-0.0082,0.0051)+
+        xlim(-0.0082,0.0051)+
+        geom_hline(yintercept = 0)+
+        geom_vline(xintercept = 0)
+        ,
+    ggplot(crossBrainSummary, aes(x = pfc_Effect, y = acc_Effect)) +
+      # Error bars for Effect
+      geom_errorbar(aes(ymin = acc_Effect  - acc_SE, ymax = acc_Effect + acc_SE), width = 0, color = "gray50") +
+      # Error bars for Effect_Low
+      geom_errorbarh(aes(xmin = pfc_Effect - pfc_SE, xmax = pfc_Effect + pfc_SE), height = 0, color = "gray50") +
+      # Points with color and size mappings
+      geom_point(aes(fill = -log10(pfc_P), size = -log10(acc_P)), shape = 21, color = "black") +
+      scale_fill_viridis_c() + # Color mapping for fill
+      scale_size(range = c(2, 6)) + # Adjust point size range
+      theme_bw() +
+      labs(x = "UKBBN PFC Estimate (+/- SE)", y = "UKBBN ACC Estimate (+/- SE)", fill = "UKBBN PFC \n P-value",size = "UKBBN ACC \n P-value") +
+      theme(legend.position = "right", 
+            legend.box = "bottom",strip.text.x = element_text(size = 12))+
+      ylim(-0.0082,0.0051)+
+      xlim(-0.0082,0.0051)+
+      geom_hline(yintercept = 0)+
+      geom_vline(xintercept = 0),ncol = 1, labels = c("A)","B)"))
+dev.off()
+
+getwd()
+write.csv(crossBrainSummary,file = "crossBrainEffectsSize.csv")
+write.csv(pfcSummary,file = "pfcCompEffectsSize.csv")
 ###################################
 ###### Plot Forests ######
 ###################################
@@ -441,3 +650,110 @@ plot2 <- plot2+ylab("cg08577553 \n (PTAFR)")
 plot3 <-   plot_forest(plot_data, "cg27481153",-0.006,0.008)
 plot3 <- plot3+ylab("cg27481153 \n (UBASH3B)")
 forests <- plot_grid(plot1+xlab(NULL),plot3+xlab(NULL),plot2,ncol = 1,rel_heights = c(1,1,1.1),align = "v")
+library(ggtranscript)
+library(GenomicRanges)
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+library(dplyr)
+
+gtf_path <- file.path(tempdir(), "Homo_sapiens.GRCh37.87.chr.gtf.gz")
+
+download.file(
+  paste0(
+    "https://ftp.ensembl.org/pub/grch37/release-87/gtf/homo_sapiens/",
+    "Homo_sapiens.GRCh37.87.chr.gtf.gz"
+  ),
+  destfile = gtf_path
+)
+
+gtf <- rtracklayer::import(gtf_path)
+
+ 
+plotRegion <- function(chrnum,startBP,endBP,cpglocus){         
+          region <- GRanges(
+            seqnames = chrnum,
+            ranges = IRanges(start = startBP-10000, end = endBP+ 10000),
+            strand = "*"
+          )
+          #> 
+          gtf <- gtf %>% dplyr::as_tibble()
+          class(gtf)
+          gtf_gr <- GRanges(
+            seqnames = gtf$seqnames,
+            ranges = IRanges(gtf$start, gtf$end),
+            strand = gtf$strand
+          )
+          
+          mcols(gtf_gr) <- gtf[, c(
+            "type",
+            "gene_name",
+            "transcript_name",
+            "transcript_biotype"
+          )]
+          
+          seqlevelsStyle(gtf_gr) <- "UCSC"
+          seqlevelsStyle(region) <- "UCSC"
+          region_hits <- subsetByOverlaps(gtf_gr, region)
+          
+          region_hits_df <- as.data.frame(region_hits)
+          region_hits_df <- region_hits_df %>%
+            dplyr::filter(type %in% c(
+              "gene",
+              "transcript",
+              "exon",
+              "CDS",
+              "UTR"
+            ))
+          
+          region_hits_df <- region_hits_df %>%
+            dplyr::select(
+              seqnames,
+              start,
+              end,
+              strand,
+              type,
+              gene_name,
+              transcript_name,
+              transcript_biotype
+            )
+          
+          region_hits_df_exons <- region_hits_df %>% dplyr::filter(type == "exon")
+          
+          filtered_df <- region_hits_df_exons %>%
+            group_by(transcript_name) %>%
+            filter(
+              max(end) >= startBP &  # not entirely upstream
+                min(start) <= endBP    # not entirely downstream
+            ) %>%
+            ungroup()
+          
+          
+          
+          filtered_df %>%
+            ggplot(aes(
+              xstart = start,
+              xend = end,
+              y = transcript_name
+            )) +
+            geom_range(fill = "black"
+            ) +
+            geom_intron(
+              data = to_intron(filtered_df, "transcript_name"),
+              aes(strand = strand),arrow.min.intron.length = 200,
+              arrow = grid::arrow(ends = "last", length = grid::unit(0.05, "inches"))
+            )+theme_bw()+labs(y = NULL)+geom_vline(xintercept = cpglocus,color = "red")
+}
+
+
+miniman1 <- plotRegion("chr17",39696336-18000,39696336+18000,39696336)
+miniman2 <- plotRegion("chr1",28520392-28000,28520392+28000,28520392)
+miniman3 <- plotRegion("chr11",122587207-88000,122587207+88000,122587207)
+
+
+regionPlots <- plot_grid(plot1,miniman1,plot3,miniman3,plot2,miniman2+xlab("Genomic Location"),rel_widths = c(0.4,0.6),align = "vh",rel_heights = c(1,1,1),ncol = 2, nrow = 3)
+
+head(allSumstat)
+
+
+pdf("Plot2_Forests_EffectComp.pdf",width = 10,height = 11.2)
+plot_grid(regionPlots,effectComp,ncol = 1,rel_heights = c(0.6,0.4),labels = c("B)","C)"),label_size = 20)
+dev.off()
