@@ -137,9 +137,19 @@ write.csv(resORA_Re, file = "/lustre/projects/Research_Project-T112069/Meth/Meta
 
 resORA_GO <- resORA_GO[order(resORA_GO$pvalue),]
 
+legendmaker <- data.frame(padj = c(0.01,0.1),Description = c(1,2),value = c(1,2))
+fdrLegend <- get_legend(ggplot(legendmaker, aes(x = factor(Description), y = value,fill = padj < 0.05,color = padj < 0.05))+
+  geom_bar(stat = "identity")+
+  coord_flip()+
+  ylab("-log10(p-value)")+
+  xlab("KEGG Term")+
+  scale_fill_manual(values = c("grey","#1B9E77"))+
+  scale_color_manual(values = c("grey","black"))+
+  theme_bw()+labs(fill = "FDR Significant",color = "FDR Significant"))
+
 #Plot the relevant terms
 library(cowplot)
-pdf("/lustre/projects/Research_Project-T112069/Meth/Meta/FiveCell/methylGSA/goRRVGO_Plot_Rerun.pdf",width = 12,height = 4.2)
+pdf("Figure3_goRRVGO_Plot_Rerun.pdf",width = 12,height = 4.2)
 plot_grid(
   ggplot(resORA_GO, aes(y = factor(Description, levels = rev(resORA_GO$Description)),x = -log10(pvalue)))+
     geom_point(shape = 21,fill = "#1B9E77",size = 6)+
@@ -147,9 +157,20 @@ plot_grid(
     scale_x_continuous(limits = c(3,5), expand = c(0,0))+
     scale_size_continuous(limits = c(0,0.06))+
     labs(x = "-log10(P-value)", y = "Ontology Term"),
-  oraKEGGplot
-)
+  plot_grid(oraKEGGplot,fdrLegend,ncol = 1, labels = c("B)"),rel_heights = c(0.8,0.2)), labels = c("A)"),rel_widths = c(0.4,0.4),nrow = 1)
+
 dev.off()
+
+
+goPlots <- plot_grid(
+  ggplot(resORA_GO, aes(y = factor(Description, levels = rev(resORA_GO$Description)),x = -log10(pvalue)))+
+    geom_point(shape = 21,fill = "#1B9E77",size = 6)+
+    theme_bw()+
+    scale_x_continuous(limits = c(3,5), expand = c(0,0))+
+    scale_size_continuous(limits = c(0,0.06))+
+    labs(x = "-log10(P-value)", y = "Ontology Term"),
+  plot_grid(oraKEGGplot,fdrLegend,ncol = 1, labels = c("B)"),rel_heights = c(0.8,0.2)), labels = c("A)"),rel_widths = c(0.4,0.4),nrow = 1)
+
 
 
 #This section of code is adapted from the methylGSA package to extract the RRA gene ID's used for
